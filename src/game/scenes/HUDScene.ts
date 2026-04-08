@@ -7,6 +7,8 @@ import { GodPanel } from '@/ui/GodPanel.js';
 import { BrushSizeSelector } from '@/ui/BrushSizeSelector.js';
 import { Minimap } from '@/ui/Minimap.js';
 import { EntityInfoPanel } from '@/ui/EntityInfoPanel.js';
+import { SaveManager } from '@/game/save/SaveManager.js';
+import { AudioManager } from '@/game/audio/AudioManager.js';
 import Position from '@/game/ecs/components/Position.js';
 import { Selectable } from '@/game/ecs/components/TagComponents.js';
 
@@ -20,8 +22,27 @@ export class HUDScene extends Phaser.Scene {
   private fpsText: Phaser.GameObjects.Text | null = null;
   private speedMultiplier: number = 1;
 
+  // Wave 7: Save/Load UI
+  private saveButtons: Phaser.GameObjects.Container[] = [];
+  private saveContainer: Phaser.GameObjects.Container | null = null;
+  private savePanelBg: Phaser.GameObjects.Rectangle | null = null;
+
+  // Wave 7: Sound toggle
+  private soundButton: Phaser.GameObjects.Container | null = null;
+  private soundLabel: Phaser.GameObjects.Text | null = null;
+
+  // Wave 7: Day/Time display
+  private dayTimeText: Phaser.GameObjects.Text | null = null;
+
+  // Wave 7: Save notification
+  private saveNotification: Phaser.GameObjects.Text | null = null;
+  private saveNotifyTimer: number = 0;
+
+  private audioManager: AudioManager;
+
   constructor() {
     super('HUD');
+    this.audioManager = AudioManager.getInstance();
   }
 
   create(): void {
@@ -68,10 +89,225 @@ export class HUDScene extends Phaser.Scene {
     // 8. Listen for entity selection clicks on GameScene
     this.setupEntitySelection();
 
+    // ── Wave 7: Save/Load UI ──────────────────────────────────────────
+
+    this.createSaveUI(width, height);
+
+    // ── Wave 7: Sound toggle ──────────────────────────────────────────
+
+    this.createSoundToggle(width, height);
+
+    // ── Wave 7: Day/Time display ──────────────────────────────────────
+
+    this.createDayTimeDisplay(width);
+
+    // ── Wave 7: Save notification ─────────────────────────────────────
+
+    this.saveNotification = this.add.text(width / 2, 70, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#2ecc71',
+      backgroundColor: '#000000aa',
+      padding: { x: 8, y: 4 },
+    });
+    this.saveNotification.setOrigin(0.5, 0.5);
+    this.saveNotification.setScrollFactor(0);
+    this.saveNotification.setDepth(1001);
+    this.saveNotification.setVisible(false);
+
     // Handle resize
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       this.handleResize(gameSize.width, gameSize.height);
     });
+  }
+
+  private createSaveUI(width: number, height: number): void {
+    const panelX = width - 60;
+    const panelY = 10;
+
+    this.saveContainer = this.add.container(panelX, panelY);
+    this.saveContainer.setScrollFactor(0);
+    this.saveContainer.setDepth(1000);
+
+    // Background panel
+    this.savePanelBg = this.add.rectangle(0, 0, 54, 120, 0x000000, 0.6);
+    this.savePanelBg.setOrigin(0, 0);
+    this.saveContainer.add(this.savePanelBg);
+
+    // Title
+    const title = this.add.text(27, 8, 'SAVE', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#f1c40f',
+    });
+    title.setOrigin(0.5, 0);
+    this.saveContainer.add(title);
+
+    // Save slots
+    for (let slot = 1; slot <= 3; slot++) {
+      const btnY = 22 + (slot - 1) * 32;
+
+      const btnContainer = this.add.container(27, btnY);
+      btnContainer.setScrollFactor(0);
+
+      const btnBg = this.add.rectangle(0, 0, 48, 26, 0x333333, 0.8);
+      btnBg.setOrigin(0.5, 0.5);
+      btnBg.setStrokeStyle(1, 0x555555);
+
+      const hasSave = SaveManager.hasSave(slot);
+      const info = SaveManager.getSaveInfo(slot);
+      const label =
+        hasSave && info
+          ? `S${slot}: ${new Date(info.timestamp).toLocaleTimeString()}`
+          : `Slot ${slot}: Empty`;
+
+      const btnText = this.add.text(0, 0, label, {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: hasSave ? '#ecf0f1' : '#666666',
+      });
+      btnText.setOrigin(0.5, 0.5);
+
+      btnContainer.add([btnBg, btnText]);
+      btnContainer.setSize(48, 26);
+      btnContainer.setInteractive({ useHandCursor: true });
+
+      // Left click = Load
+      btnContainer.on('pointerdown', () => {
+        this.audioManager.init();
+        this.audioManager.playUIClick();
+        this.loadSlot(slot);
+      });
+
+      // Right click = Save
+      btnContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.rightButtonDown()) {
+          this.audioManager.playUIClick();
+          this.saveToSlot(slot);
+        }
+      });
+
+      btnContainer.on('pointerover', () => {
+        btnBg.setFillStyle(0x555555, 0.9);
+        this.audioManager.playButtonHover();
+      });
+
+      btnContainer.on('pointerout', () => {
+        btnBg.setFillStyle(0x333333, 0.8);
+      });
+
+      this.saveButtons.push(btnContainer);
+      this.saveContainer.add(btnContainer);
+    }
+  }
+
+  private createSoundToggle(width: number, _height: number): void {
+    this.soundButton = this.add.container(width - 33, 142);
+    this.soundButton.setScrollFactor(0);
+    this.soundButton.setDepth(1000);
+
+    const bg = this.add.rectangle(0, 0, 48, 22, 0x333333, 0.8);
+    bg.setOrigin(0.5, 0.5);
+    bg.setStrokeStyle(1, 0x555555);
+
+    this.soundLabel = this.add.text(0, 0, 'Sound: ON', {
+      fontFamily: 'monospace',
+      fontSize: '9px',
+      color: '#ecf0f1',
+    });
+    this.soundLabel.setOrigin(0.5, 0.5);
+
+    this.soundButton.add([bg, this.soundLabel]);
+    this.soundButton.setSize(48, 22);
+    this.soundButton.setInteractive({ useHandCursor: true });
+
+    this.soundButton.on('pointerdown', () => {
+      const enabled = !this.audioManager.isEnabled();
+      this.audioManager.setEnabled(enabled);
+      if (this.soundLabel) {
+        this.soundLabel.setText(enabled ? 'Sound: ON' : 'Sound: OFF');
+      }
+      this.audioManager.init();
+      this.audioManager.playUIClick();
+    });
+
+    this.soundButton.on('pointerover', () => {
+      bg.setFillStyle(0x555555, 0.9);
+    });
+
+    this.soundButton.on('pointerout', () => {
+      bg.setFillStyle(0x333333, 0.8);
+    });
+  }
+
+  private createDayTimeDisplay(width: number): void {
+    this.dayTimeText = this.add.text(width / 2 + 90, 22, '', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#f39c12',
+    });
+    this.dayTimeText.setOrigin(0, 0.5);
+    this.dayTimeText.setScrollFactor(0);
+    this.dayTimeText.setDepth(1000);
+  }
+
+  private saveToSlot(slot: number): void {
+    const gameScene = this.getGameScene();
+    if (!gameScene) return;
+
+    const data = gameScene.getSaveGameData();
+    const success = SaveManager.save(slot, data);
+
+    this.showNotification(success ? `Saved to slot ${slot}` : `Save failed!`);
+    this.refreshSaveButtons();
+  }
+
+  private loadSlot(slot: number): void {
+    if (!SaveManager.hasSave(slot)) {
+      this.showNotification(`Slot ${slot} is empty`);
+      return;
+    }
+
+    const gameScene = this.getGameScene();
+    if (!gameScene) return;
+
+    gameScene.loadFromSave(slot);
+    this.showNotification(`Loaded slot ${slot}`);
+  }
+
+  private showNotification(text: string): void {
+    if (this.saveNotification) {
+      this.saveNotification.setText(text);
+      this.saveNotification.setVisible(true);
+      this.saveNotifyTimer = 2000; // Show for 2 seconds
+    }
+  }
+
+  private refreshSaveButtons(): void {
+    // Rebuild save button labels
+    for (let i = 0; i < this.saveButtons.length; i++) {
+      const slot = i + 1;
+      const container = this.saveButtons[i]!;
+      const texts = container.getAll('type', 'Text') as Phaser.GameObjects.Text[];
+
+      const hasSave = SaveManager.hasSave(slot);
+      const info = SaveManager.getSaveInfo(slot);
+      const label =
+        hasSave && info
+          ? `S${slot}: ${new Date(info.timestamp).toLocaleTimeString()}`
+          : `Slot ${slot}: Empty`;
+
+      for (const txt of texts) {
+        txt.setText(label);
+        txt.setColor(hasSave ? '#ecf0f1' : '#666666');
+      }
+    }
+  }
+
+  private getGameScene(): import('@/game/scenes/GameScene.js').GameScene | null {
+    const scene = this.scene.get('Game');
+    if (!scene) return null;
+    return scene as unknown as import('@/game/scenes/GameScene.js').GameScene;
   }
 
   private setupEntitySelection(): void {
@@ -125,13 +361,17 @@ export class HUDScene extends Phaser.Scene {
 
   private onSpeedChange(multiplier: number): void {
     this.speedMultiplier = multiplier;
-    const gameScene = this.scene.get('Game');
+    const gameScene = this.getGameScene();
 
-    if (multiplier === 0) {
-      gameScene.scene.pause('Game');
-    } else {
-      if (gameScene.scene.isPaused('Game')) {
-        gameScene.scene.resume('Game');
+    if (gameScene) {
+      gameScene.setSpeedMultiplier(multiplier);
+
+      if (multiplier === 0) {
+        gameScene.scene.pause('Game');
+      } else {
+        if (gameScene.scene.isPaused('Game')) {
+          gameScene.scene.resume('Game');
+        }
       }
     }
   }
@@ -213,6 +453,26 @@ export class HUDScene extends Phaser.Scene {
         (size: number) => this.onBrushSizeChange(size),
       );
     }
+
+    // Reposition save panel
+    if (this.saveContainer) {
+      this.saveContainer.setPosition(width - 60, 10);
+    }
+
+    // Reposition sound toggle
+    if (this.soundButton) {
+      this.soundButton.setPosition(width - 33, 142);
+    }
+
+    // Reposition day/time display
+    if (this.dayTimeText) {
+      this.dayTimeText.setPosition(width / 2 + 90, 22);
+    }
+
+    // Reposition save notification
+    if (this.saveNotification) {
+      this.saveNotification.setPosition(width / 2, 70);
+    }
   }
 
   update(_time: number, delta: number): void {
@@ -245,6 +505,45 @@ export class HUDScene extends Phaser.Scene {
       const fps = this.game.loop.actualFps;
       this.fpsText.setText(`FPS: ${Math.round(fps)}`);
     }
+
+    // ── Wave 7: Day/Time display ─────────────────────────────────────
+    this.updateDayTimeDisplay();
+
+    // ── Wave 7: Save notification timeout ────────────────────────────
+    if (this.saveNotifyTimer > 0) {
+      this.saveNotifyTimer -= delta;
+      if (this.saveNotifyTimer <= 0 && this.saveNotification) {
+        this.saveNotification.setVisible(false);
+      }
+    }
+  }
+
+  private updateDayTimeDisplay(): void {
+    if (!this.dayTimeText) return;
+
+    const gameScene = this.getGameScene();
+    if (!gameScene) return;
+
+    const cycle = gameScene.getDayNightCycle();
+    if (!cycle) return;
+
+    const hour = cycle.getHour();
+    const phase = cycle.getTimeOfDay();
+    const hourStr = Math.floor(hour).toString().padStart(2, '0');
+    const minStr = Math.floor((hour % 1) * 60)
+      .toString()
+      .padStart(2, '0');
+
+    const phaseIcons: Record<string, string> = {
+      dawn: '🌅',
+      day: '☀️',
+      dusk: '🌇',
+      night: '🌙',
+    };
+
+    this.dayTimeText.setText(
+      `${phaseIcons[phase] ?? ''} ${hourStr}:${minStr} ${phase.toUpperCase()}`,
+    );
   }
 }
 

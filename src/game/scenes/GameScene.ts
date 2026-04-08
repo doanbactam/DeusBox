@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { addEntity, addComponent, getAllEntities } from 'bitecs';
+import { addEntity, addComponent, getAllEntities, hasComponent, removeEntity } from 'bitecs';
 import { WORLD_TILES_X, WORLD_TILES_Y, TILE_SIZE } from '@/core/Constants.js';
 import { eventBus } from '@/core/EventBus.js';
 import { BiomeManager } from '@/world/BiomeManager.js';
@@ -19,7 +19,7 @@ import { createFactionSystem } from '@/game/ecs/systems/FactionSystem.js';
 import { createBuildingSystem } from '@/game/ecs/systems/BuildingSystem.js';
 import { createReproductionSystem } from '@/game/ecs/systems/ReproductionSystem.js';
 import { createCombatSystem } from '@/game/ecs/systems/CombatSystem.js';
-import { spawnCreature } from '@/game/ecs/factories/CreatureFactory.js';
+import { spawnCreature, entityTypes } from '@/game/ecs/factories/CreatureFactory.js';
 import { TileMap } from '@/world/TileMap.js';
 import { TerraformTool } from '@/god/TerraformTool.js';
 import { SpawnTool } from '@/god/SpawnTool.js';
@@ -27,9 +27,35 @@ import { DisasterTool } from '@/god/DisasterTool.js';
 import { GodPowers } from '@/god/GodPowers.js';
 import { InputHandler } from '@/game/input/InputHandler.js';
 import Position from '@/game/ecs/components/Position.js';
+import Velocity from '@/game/ecs/components/Velocity.js';
+import Health from '@/game/ecs/components/Health.js';
+import Needs from '@/game/ecs/components/Needs.js';
+import SpriteRef from '@/game/ecs/components/SpriteRef.js';
+import AIStateComponent from '@/game/ecs/components/AIState.js';
+import Faction from '@/game/ecs/components/Faction.js';
+import Pathfinder from '@/game/ecs/components/Pathfinder.js';
+import Combat from '@/game/ecs/components/Combat.js';
+import Reproduction from '@/game/ecs/components/Reproduction.js';
+import Inventory from '@/game/ecs/components/Inventory.js';
 import ResourceSource from '@/game/ecs/components/ResourceSource.js';
-import { Resource } from '@/game/ecs/components/TagComponents.js';
-import { TileType, ResourceType } from '@/core/Types.js';
+import Structure from '@/game/ecs/components/Structure.js';
+import {
+  Creature,
+  Selectable,
+  Humanoid,
+  Animal,
+  Resource,
+  Dead,
+} from '@/game/ecs/components/TagComponents.js';
+import { TileType, ResourceType, AIState } from '@/core/Types.js';
+import { hashTextureKey, destroyEntitySprite } from '@/game/ecs/systems/RenderSyncSystem.js';
+import { DayNightCycle } from '@/game/effects/DayNightCycle.js';
+import { ParticleSystem } from '@/game/effects/ParticleSystem.js';
+import { AudioManager } from '@/game/audio/AudioManager.js';
+import { SaveManager } from '@/game/save/SaveManager.js';
+import type { SaveGameData, SaveSlot, SavedEntity } from '@/game/save/SaveData.js';
+
+import creatureData from '@/data/creatures.json';
 
 export class GameScene extends Phaser.Scene {
   private frameCount = 0;
@@ -40,10 +66,19 @@ export class GameScene extends Phaser.Scene {
   private inputHandler: InputHandler | null = null;
   private disasterTool: DisasterTool | null = null;
   private tileMap: TileMap | null = null;
+  private dayNightCycle: DayNightCycle | null = null;
+  private particleSystem: ParticleSystem | null = null;
+  private audioManager: AudioManager;
+  private speedMultiplier: number = 1;
+  private gameTime: number = 0;
+  private seed: number = 42;
+  private autoSaveTimer: number = 0;
+  private static readonly AUTO_SAVE_INTERVAL = 60000; // 60 seconds
 
   constructor() {
     super('Game');
     this.ecsHost = ECSHost.getInstance();
+    this.audioManager = AudioManager.getInstance();
   }
 
   create(): void {
@@ -61,7 +96,7 @@ export class GameScene extends Phaser.Scene {
     // 2. Generate world
     console.time('[GameScene] World generation');
     const worldGenerator = new WorldGenerator(biomeManager);
-    const tileMap = worldGenerator.generate(42);
+    const tileMap = worldGenerator.generate(this.seed);
     console.timeEnd('[GameScene] World generation');
 
     // 3. Tileset manager
@@ -169,6 +204,44 @@ export class GameScene extends Phaser.Scene {
 
     console.log('[GameScene] God powers system initialized');
 
+    // ── Wave 7: Day/Night Cycle ──────────────────────────────────────────
+    this.dayNightCycle = new DayNightCycle(this);
+
+    // ── Wave 7: Particle System ──────────────────────────────────────────
+    this.particleSystem = new ParticleSystem(this);
+
+    // ── Wave 7: Audio Manager ────────────────────────────────────────────
+    // Init on first pointer down
+    this.input.once('pointerdown', () => {
+      this.audioManager.init();
+    });
+
+    // ── Wave 7: Keyboard shortcuts for save/load ─────────────────────────
+    this.setupSaveLoadKeys();
+
+    // ── Wave 7: Environmental particles based on biome ───────────────────
+    this.spawnEnvironmentalParticles(cx, cy);
+
+    // ── Wave 7: Listen for combat events to trigger blood particles ──────
+    eventBus.on('damage:dealt', (data) => {
+      if (this.particleSystem && data.source === 'combat') {
+        this.particleSystem.createBloodSplatter(
+          Position.x[data.entityId] ?? 0,
+          Position.y[data.entityId] ?? 0,
+        );
+      }
+    });
+
+    // ── Wave 7: Listen for entity spawns to play audio ───────────────────
+    eventBus.on('entity:spawned', () => {
+      this.audioManager.playEntitySpawn();
+    });
+
+    // ── Wave 7: Listen for disasters to play audio ───────────────────────
+    eventBus.on('disaster:start', () => {
+      this.audioManager.playDisaster();
+    });
+
     eventBus.emit('scene:change', { scene: 'Game' });
     console.log('[GameScene] World ready — 256x256 tiles, procedural biomes, creatures spawned');
   }
@@ -182,6 +255,9 @@ export class GameScene extends Phaser.Scene {
         `[GameScene] Frame ${this.frameCount} | FPS: ${fps.toFixed(0)} | Delta: ${delta.toFixed(1)}ms`,
       );
     }
+
+    // Track game time
+    this.gameTime += delta * this.speedMultiplier;
 
     // Run ECS systems
     this.ecsHost.tick(delta);
@@ -204,6 +280,205 @@ export class GameScene extends Phaser.Scene {
     // Update chunks (load/unload based on camera viewport)
     if (this.chunkRenderer) {
       this.chunkRenderer.update(this.cameras.main);
+    }
+
+    // ── Wave 7 updates ───────────────────────────────────────────────────
+
+    // Day/night cycle
+    if (this.dayNightCycle) {
+      this.dayNightCycle.update(delta, this.speedMultiplier);
+    }
+
+    // Particle system
+    if (this.particleSystem) {
+      this.particleSystem.update(delta);
+    }
+
+    // Auto-save
+    this.autoSaveTimer += delta;
+    if (this.autoSaveTimer >= GameScene.AUTO_SAVE_INTERVAL) {
+      this.autoSaveTimer = 0;
+      this.autoSave(1);
+    }
+  }
+
+  // ── Public API for SaveManager ────────────────────────────────────────
+
+  getSaveGameData(): SaveGameData {
+    const cam = this.cameras.main;
+    return {
+      seed: this.seed,
+      gameTime: this.gameTime,
+      speedMultiplier: this.speedMultiplier,
+      camera: {
+        x: cam.scrollX,
+        y: cam.scrollY,
+        zoom: cam.zoom,
+      },
+      world: this.ecsHost.world,
+      tileMap: this.tileMap!,
+      sprites: this.sprites,
+    };
+  }
+
+  loadFromSave(slot: number): void {
+    const saveSlot = SaveManager.load(slot);
+    if (!saveSlot) {
+      console.warn(`[GameScene] No save found in slot ${slot}`);
+      return;
+    }
+
+    // Clear existing entities
+    SaveManager.clearWorld(this.ecsHost.world, this.sprites);
+
+    // Restore tile data
+    if (this.tileMap) {
+      const tiles = SaveManager.base64ToUint8(saveSlot.tiles.data);
+      for (let y = 0; y < WORLD_TILES_Y; y++) {
+        for (let x = 0; x < WORLD_TILES_X; x++) {
+          const idx = tiles[y * WORLD_TILES_X + x]!;
+          const tileTypes = Object.values(TileType);
+          if (idx < tileTypes.length) {
+            this.tileMap.setTile(x, y, tileTypes[idx]!);
+          }
+        }
+      }
+    }
+
+    // Restore camera
+    this.cameras.main.setScroll(saveSlot.camera.x, saveSlot.camera.y);
+    this.cameras.main.setZoom(saveSlot.camera.zoom);
+
+    // Restore game state
+    this.gameTime = saveSlot.gameTime;
+    this.speedMultiplier = saveSlot.speedMultiplier;
+
+    // Restore day/night cycle time
+    if (this.dayNightCycle) {
+      this.dayNightCycle.setGameTime(
+        (this.gameTime / 1000 / 300) * 300, // Convert to cycle seconds
+      );
+    }
+
+    // Rebuild chunk renderer
+    if (this.chunkRenderer) {
+      this.chunkRenderer.update(this.cameras.main);
+    }
+
+    // Restore entities
+    for (const saved of saveSlot.entities) {
+      this.restoreEntity(saved);
+    }
+
+    console.log(`[GameScene] Restored ${saveSlot.entities.length} entities from slot ${slot}`);
+  }
+
+  setSpeedMultiplier(multiplier: number): void {
+    this.speedMultiplier = multiplier;
+  }
+
+  getSpeedMultiplier(): number {
+    return this.speedMultiplier;
+  }
+
+  getGameTime(): number {
+    return this.gameTime;
+  }
+
+  getDayNightCycle(): DayNightCycle | null {
+    return this.dayNightCycle;
+  }
+
+  getParticleSystem(): ParticleSystem | null {
+    return this.particleSystem;
+  }
+
+  getAudioManager(): AudioManager {
+    return this.audioManager;
+  }
+
+  getECSHost(): ECSHost {
+    return this.ecsHost;
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────
+
+  private setupSaveLoadKeys(): void {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+
+    // F5 = Quick save to slot 1
+    keyboard.on('keydown-F5', () => {
+      this.autoSave(1);
+      this.audioManager.playUIClick();
+    });
+
+    // F9 = Quick load from slot 1
+    keyboard.on('keydown-F9', () => {
+      this.loadFromSave(1);
+      this.audioManager.playUIClick();
+    });
+  }
+
+  private autoSave(slot: number): void {
+    const data = this.getSaveGameData();
+    const success = SaveManager.save(slot, data);
+    if (success) {
+      console.log(`[GameScene] Auto-saved to slot ${slot}`);
+    }
+  }
+
+  private restoreEntity(saved: SavedEntity): void {
+    const world = this.ecsHost.world;
+
+    if (saved.type === 'creature' && saved.creatureType) {
+      const eid = spawnCreature(world, saved.creatureType, saved.x, saved.y, saved.faction.id);
+
+      // Restore saved component data
+      if (eid >= 0) {
+        Health.current[eid] = saved.health.current;
+        Health.max[eid] = saved.health.max;
+
+        if (saved.needs) {
+          Needs.hunger[eid] = saved.needs.hunger;
+          Needs.rest[eid] = saved.needs.rest;
+          Needs.social[eid] = saved.needs.social;
+          Needs.fun[eid] = saved.needs.fun;
+        }
+
+        Faction.id[eid] = saved.faction.id;
+        Faction.reputation[eid] = saved.faction.reputation;
+
+        if (saved.aiState !== undefined) {
+          AIStateComponent.state[eid] = saved.aiState;
+        }
+
+        if (saved.age !== undefined && hasComponent(world, eid, Reproduction)) {
+          Reproduction.age[eid] = saved.age;
+        }
+      }
+    }
+  }
+
+  private spawnEnvironmentalParticles(centerX: number, centerY: number): void {
+    if (!this.particleSystem || !this.tileMap) return;
+
+    // Check camera viewport biome for weather
+    const cam = this.cameras.main;
+    const viewX = cam.scrollX;
+    const viewY = cam.scrollY;
+    const viewW = cam.width;
+    const viewH = cam.height;
+
+    // Check center tile for biome
+    const tileX = Math.floor((viewX + viewW / 2) / TILE_SIZE);
+    const tileY = Math.floor((viewY + viewH / 2) / TILE_SIZE);
+    const tile = this.tileMap.getTile(tileX, tileY);
+
+    if (tile === TileType.Tundra || tile === TileType.Snow) {
+      this.particleSystem.createSnow(viewX, viewY, viewW, viewH);
+    } else if (tile === TileType.DeepWater || tile === TileType.ShallowWater) {
+      this.particleSystem.createRain(viewX, viewY, viewW, viewH);
     }
   }
 }
