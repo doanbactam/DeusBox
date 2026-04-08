@@ -104,9 +104,10 @@ export function spawnCreature(
   Health.current[eid] = config.maxHealth;
   Health.max[eid] = config.maxHealth;
 
-  // Needs (start at 100 = fully satisfied)
+  // Needs: hunger starts at 0 (full, increases when hungry)
+  // rest/social/fun start at 100 (fully satisfied, decrease over time)
   addComponent(world, eid, Needs);
-  Needs.hunger[eid] = 100;
+  Needs.hunger[eid] = 0;
   Needs.rest[eid] = 100;
   Needs.social[eid] = 100;
   Needs.fun[eid] = 100;

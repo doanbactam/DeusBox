@@ -11,6 +11,7 @@ import Reproduction from '@/game/ecs/components/Reproduction.js';
 import Structure from '@/game/ecs/components/Structure.js';
 import { Creature, Building, Dead } from '@/game/ecs/components/TagComponents.js';
 import { entityTypes } from '@/game/ecs/factories/CreatureFactory.js';
+import buildingData from '@/data/buildings.json';
 import { destroyEntitySprite } from '@/game/ecs/systems/RenderSyncSystem.js';
 
 const SAVE_VERSION = '1.0.0';
@@ -142,10 +143,7 @@ export class SaveManager {
       }
 
       if (isBuilding && hasComponent(world, eid, Structure)) {
-        const buildingTypeList = Object.keys(
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          (globalThis as Record<string, unknown>).__buildingData ?? {},
-        );
+        const buildingTypeList = Object.keys(buildingData);
         saved.buildingType = buildingTypeList[Math.floor(Structure.type[eid])] ?? 'house';
       }
 

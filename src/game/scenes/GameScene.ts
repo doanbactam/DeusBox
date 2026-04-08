@@ -124,7 +124,7 @@ export class GameScene extends Phaser.Scene {
     this.ecsHost.registerSystem(createTimeSystem());
     this.ecsHost.registerSystem(createNeedsDecaySystem());
     this.ecsHost.registerSystem(createAISystem(tileMap));
-    this.ecsHost.registerSystem(createPathfindingSystem());
+    this.ecsHost.registerSystem(createPathfindingSystem(tileMap));
     this.ecsHost.registerSystem(createMovementSystem(worldWidth, worldHeight));
     this.ecsHost.registerSystem(createRenderSyncSystem(this, this.sprites));
 

@@ -47,5 +47,19 @@
     "color": "#f1c40f",
     "needs": { "hungerDecay": 0.1, "restDecay": 0.1, "socialDecay": 0, "funDecay": 0 },
     "aiWeights": { "food": 0.6, "rest": 0.9, "social": 0, "fun": 0 }
+  },
+  "bear": {
+    "speed": 50,
+    "maxHealth": 200,
+    "color": "#5d4e37",
+    "needs": { "hungerDecay": 0.3, "restDecay": 0.1, "socialDecay": 0, "funDecay": 0 },
+    "aiWeights": { "food": 1.0, "rest": 0.7, "social": 0, "fun": 0 }
+  },
+  "fish": {
+    "speed": 70,
+    "maxHealth": 15,
+    "color": "#3498db",
+    "needs": { "hungerDecay": 0.12, "restDecay": 0.05, "socialDecay": 0, "funDecay": 0 },
+    "aiWeights": { "food": 0.7, "rest": 0.8, "social": 0, "fun": 0 }
   }
 }
