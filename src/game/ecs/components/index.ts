@@ -6,6 +6,11 @@ export { default as SpriteRef } from './SpriteRef.js';
 export { default as AIStateComponent } from './AIState.js';
 export { default as Faction } from './Faction.js';
 export { default as Pathfinder } from './Pathfinder.js';
+export { default as ResourceSource } from './ResourceSource.js';
+export { default as Inventory } from './Inventory.js';
+export { default as Structure } from './Structure.js';
+export { default as Reproduction } from './Reproduction.js';
+export { default as Combat } from './Combat.js';
 export {
   Creature,
   Building,

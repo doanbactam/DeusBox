@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addEntity, addComponent, getAllEntities } from 'bitecs';
 import { WORLD_TILES_X, WORLD_TILES_Y, TILE_SIZE } from '@/core/Constants.js';
 import { eventBus } from '@/core/EventBus.js';
 import { BiomeManager } from '@/world/BiomeManager.js';
@@ -13,14 +14,22 @@ import { createRenderSyncSystem } from '@/game/ecs/systems/RenderSyncSystem.js';
 import { createAISystem } from '@/game/ecs/systems/AISystem.js';
 import { createNeedsDecaySystem } from '@/game/ecs/systems/NeedsDecaySystem.js';
 import { createPathfindingSystem } from '@/game/ecs/systems/PathfindingSystem.js';
+import { createResourceSystem, resourceTypeToIndex } from '@/game/ecs/systems/ResourceSystem.js';
+import { createFactionSystem } from '@/game/ecs/systems/FactionSystem.js';
+import { createBuildingSystem } from '@/game/ecs/systems/BuildingSystem.js';
+import { createReproductionSystem } from '@/game/ecs/systems/ReproductionSystem.js';
+import { createCombatSystem } from '@/game/ecs/systems/CombatSystem.js';
 import { spawnCreature } from '@/game/ecs/factories/CreatureFactory.js';
-import { getAllEntities } from 'bitecs';
 import { TileMap } from '@/world/TileMap.js';
 import { TerraformTool } from '@/god/TerraformTool.js';
 import { SpawnTool } from '@/god/SpawnTool.js';
 import { DisasterTool } from '@/god/DisasterTool.js';
 import { GodPowers } from '@/god/GodPowers.js';
 import { InputHandler } from '@/game/input/InputHandler.js';
+import Position from '@/game/ecs/components/Position.js';
+import ResourceSource from '@/game/ecs/components/ResourceSource.js';
+import { Resource } from '@/game/ecs/components/TagComponents.js';
+import { TileType, ResourceType } from '@/core/Types.js';
 
 export class GameScene extends Phaser.Scene {
   private frameCount = 0;
@@ -84,6 +93,13 @@ export class GameScene extends Phaser.Scene {
     this.ecsHost.registerSystem(createMovementSystem(worldWidth, worldHeight));
     this.ecsHost.registerSystem(createRenderSyncSystem(this, this.sprites));
 
+    // Wave 6 systems: Resource → Faction → Building → Reproduction → Combat
+    this.ecsHost.registerSystem(createResourceSystem());
+    this.ecsHost.registerSystem(createFactionSystem());
+    this.ecsHost.registerSystem(createBuildingSystem(tileMap));
+    this.ecsHost.registerSystem(createReproductionSystem(this, this.sprites));
+    this.ecsHost.registerSystem(createCombatSystem(this.sprites));
+
     // Spawn test creatures around the center of the world
     const cx = worldWidth / 2;
     const cy = worldHeight / 2;
@@ -123,6 +139,10 @@ export class GameScene extends Phaser.Scene {
 
     const entityCount = getAllEntities(this.ecsHost.world).length;
     console.log(`[GameScene] ECS initialized with ${entityCount} entities`);
+
+    // ── Spawn terrain resource entities ──────────────────────────────────
+    spawnTerrainResources(this.ecsHost.world, tileMap, cx, cy, 60);
+    console.log('[GameScene] Terrain resources spawned');
 
     // ── God Powers Initialization ────────────────────────────────────────
 
@@ -185,5 +205,58 @@ export class GameScene extends Phaser.Scene {
     if (this.chunkRenderer) {
       this.chunkRenderer.update(this.cameras.main);
     }
+  }
+}
+
+/**
+ * Spawns ResourceSource entities at terrain-appropriate locations.
+ * Forest/DenseForest → Wood, Grass → Food, Mountain → Stone.
+ */
+function spawnTerrainResources(
+  world: ReturnType<typeof ECSHost.getInstance>['world'],
+  tileMap: TileMap,
+  centerX: number,
+  centerY: number,
+  count: number,
+): void {
+  for (let i = 0; i < count; i++) {
+    const x = centerX + (Math.random() - 0.5) * 1000;
+    const y = centerY + (Math.random() - 0.5) * 1000;
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    const tile = tileMap.getTile(tileX, tileY);
+
+    let resourceTypeIndex = -1;
+    let amount = 0;
+
+    switch (tile) {
+      case TileType.Forest:
+      case TileType.DenseForest:
+        resourceTypeIndex = resourceTypeToIndex(ResourceType.Wood);
+        amount = 50 + Math.random() * 50;
+        break;
+      case TileType.Grass:
+        resourceTypeIndex = resourceTypeToIndex(ResourceType.Food);
+        amount = 30 + Math.random() * 30;
+        break;
+      case TileType.Mountain:
+        resourceTypeIndex = resourceTypeToIndex(ResourceType.Stone);
+        amount = 40 + Math.random() * 40;
+        break;
+      default:
+        continue;
+    }
+
+    const eid = addEntity(world);
+    addComponent(world, eid, Position);
+    Position.x[eid] = x;
+    Position.y[eid] = y;
+
+    addComponent(world, eid, ResourceSource);
+    ResourceSource.type[eid] = resourceTypeIndex;
+    ResourceSource.amount[eid] = amount;
+    ResourceSource.harvestTime[eid] = 2;
+
+    addComponent(world, eid, Resource);
   }
 }

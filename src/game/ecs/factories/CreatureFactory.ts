@@ -9,12 +9,41 @@ import SpriteRef from '../components/SpriteRef.js';
 import AIStateComponent from '../components/AIState.js';
 import Faction from '../components/Faction.js';
 import Pathfinder from '../components/Pathfinder.js';
+import Combat from '../components/Combat.js';
+import Reproduction from '../components/Reproduction.js';
+import Inventory from '../components/Inventory.js';
 import { Creature, Selectable, Humanoid, Animal } from '../components/TagComponents.js';
 import { hashTextureKey } from '../systems/RenderSyncSystem.js';
 import { eventBus } from '@/core/EventBus.js';
 import { AIState } from '@/core/Types.js';
 
 import creatureData from '@/data/creatures.json';
+
+/** Track entity types for reproduction system lookups. */
+export const entityTypes = new Map<number, string>();
+
+/** Attack power per creature type (from task spec). */
+const COMBAT_POWER: Record<string, number> = {
+  human: 10,
+  elf: 8,
+  dwarf: 15,
+  orc: 12,
+  wolf: 8,
+  bear: 15,
+  deer: 3,
+  chicken: 1,
+  fish: 1,
+};
+
+/** Default attack range in pixels. */
+const DEFAULT_ATTACK_RANGE = 48;
+/** Default attack cooldown in milliseconds. */
+const DEFAULT_ATTACK_COOLDOWN = 1000;
+/** Maturity age in seconds: humanoids=100, animals=50. */
+const HUMANOID_MATURITY_AGE = 100;
+const ANIMAL_MATURITY_AGE = 50;
+/** Default reproduction cooldown in seconds. */
+const DEFAULT_REPRO_COOLDOWN = 0;
 
 interface CreatureConfig {
   speed: number;
@@ -115,6 +144,38 @@ export function spawnCreature(
   } else if (ANIMAL_TYPES.has(type)) {
     addComponent(world, eid, Animal);
   }
+
+  // ── Combat component ──────────────────────────────────────────────
+  if (HUMANOID_TYPES.has(type) || ANIMAL_TYPES.has(type)) {
+    addComponent(world, eid, Combat);
+    Combat.attackPower[eid] = COMBAT_POWER[type] ?? 5;
+    Combat.attackRange[eid] = DEFAULT_ATTACK_RANGE;
+    Combat.attackCooldown[eid] = DEFAULT_ATTACK_COOLDOWN;
+    Combat.lastAttackTime[eid] = 0;
+    Combat.target[eid] = -1;
+  }
+
+  // ── Reproduction component (all creatures) ────────────────────────
+  addComponent(world, eid, Reproduction);
+  Reproduction.age[eid] = 0;
+  Reproduction.maturityAge[eid] = HUMANOID_TYPES.has(type)
+    ? HUMANOID_MATURITY_AGE
+    : ANIMAL_MATURITY_AGE;
+  Reproduction.cooldown[eid] = DEFAULT_REPRO_COOLDOWN;
+  Reproduction.pregnant[eid] = 0;
+
+  // ── Inventory component (humanoids only) ──────────────────────────
+  if (HUMANOID_TYPES.has(type)) {
+    addComponent(world, eid, Inventory);
+    Inventory.wood[eid] = 0;
+    Inventory.food[eid] = 0;
+    Inventory.stone[eid] = 0;
+    Inventory.gold[eid] = 0;
+    Inventory.iron[eid] = 0;
+  }
+
+  // Track entity type for reproduction
+  entityTypes.set(eid, type);
 
   // Fire spawn event
   eventBus.emit('entity:spawned', { entityId: eid, type });
