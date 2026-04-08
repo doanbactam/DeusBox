@@ -10,8 +10,17 @@ import { ECSHost } from '@/game/ecs/ECSHost.js';
 import { createTimeSystem } from '@/game/ecs/systems/TimeSystem.js';
 import { createMovementSystem } from '@/game/ecs/systems/MovementSystem.js';
 import { createRenderSyncSystem } from '@/game/ecs/systems/RenderSyncSystem.js';
+import { createAISystem } from '@/game/ecs/systems/AISystem.js';
+import { createNeedsDecaySystem } from '@/game/ecs/systems/NeedsDecaySystem.js';
+import { createPathfindingSystem } from '@/game/ecs/systems/PathfindingSystem.js';
 import { spawnCreature } from '@/game/ecs/factories/CreatureFactory.js';
 import { getAllEntities } from 'bitecs';
+import { TileMap } from '@/world/TileMap.js';
+import { TerraformTool } from '@/god/TerraformTool.js';
+import { SpawnTool } from '@/god/SpawnTool.js';
+import { DisasterTool } from '@/god/DisasterTool.js';
+import { GodPowers } from '@/god/GodPowers.js';
+import { InputHandler } from '@/game/input/InputHandler.js';
 
 export class GameScene extends Phaser.Scene {
   private frameCount = 0;
@@ -19,6 +28,9 @@ export class GameScene extends Phaser.Scene {
   private cameraController: CameraController | null = null;
   private ecsHost: ECSHost;
   private sprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+  private inputHandler: InputHandler | null = null;
+  private disasterTool: DisasterTool | null = null;
+  private tileMap: TileMap | null = null;
 
   constructor() {
     super('Game');
@@ -59,10 +71,16 @@ export class GameScene extends Phaser.Scene {
     // Initial chunk load
     this.chunkRenderer.update(this.cameras.main);
 
+    // Store tileMap reference for god powers
+    this.tileMap = tileMap;
+
     // ── ECS Initialization ────────────────────────────────────────────
 
-    // Register systems in order: Time → Movement → RenderSync
+    // Register systems in order: Time → NeedsDecay → AI → Pathfinding → Movement → RenderSync
     this.ecsHost.registerSystem(createTimeSystem());
+    this.ecsHost.registerSystem(createNeedsDecaySystem());
+    this.ecsHost.registerSystem(createAISystem(tileMap));
+    this.ecsHost.registerSystem(createPathfindingSystem());
     this.ecsHost.registerSystem(createMovementSystem(worldWidth, worldHeight));
     this.ecsHost.registerSystem(createRenderSyncSystem(this, this.sprites));
 
@@ -106,6 +124,31 @@ export class GameScene extends Phaser.Scene {
     const entityCount = getAllEntities(this.ecsHost.world).length;
     console.log(`[GameScene] ECS initialized with ${entityCount} entities`);
 
+    // ── God Powers Initialization ────────────────────────────────────────
+
+    const terraformTool = new TerraformTool(tileMap, this.chunkRenderer);
+    const spawnTool = new SpawnTool(this.ecsHost.world, this);
+    this.disasterTool = new DisasterTool(this, this.ecsHost.world, tileMap);
+
+    const godPowers = new GodPowers(
+      this.ecsHost.world,
+      tileMap,
+      this,
+      terraformTool,
+      spawnTool,
+      this.disasterTool,
+    );
+
+    this.inputHandler = new InputHandler(
+      this,
+      godPowers,
+      terraformTool,
+      spawnTool,
+      this.disasterTool,
+    );
+
+    console.log('[GameScene] God powers system initialized');
+
     eventBus.emit('scene:change', { scene: 'Game' });
     console.log('[GameScene] World ready — 256x256 tiles, procedural biomes, creatures spawned');
   }
@@ -122,6 +165,16 @@ export class GameScene extends Phaser.Scene {
 
     // Run ECS systems
     this.ecsHost.tick(delta);
+
+    // Update god powers input
+    if (this.inputHandler) {
+      this.inputHandler.update();
+    }
+
+    // Process active disasters
+    if (this.disasterTool) {
+      this.disasterTool.update(delta);
+    }
 
     // Update camera
     if (this.cameraController) {
