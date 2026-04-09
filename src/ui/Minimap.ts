@@ -7,6 +7,7 @@ import Position from '@/game/ecs/components/Position.js';
 import Faction from '@/game/ecs/components/Faction.js';
 import { Creature } from '@/game/ecs/components/TagComponents.js';
 import type { TileMap } from '@/world/TileMap.js';
+import type { CameraController } from '@/game/camera/CameraController.js';
 import { eventBus } from '@/core/EventBus.js';
 
 const TILE_COLORS: Record<string, number> = {
@@ -45,6 +46,15 @@ export class Minimap {
   private dirty: boolean = true;
   private territoryGrid: Uint8Array | null = null;
   private territoryDots: Phaser.GameObjects.Graphics;
+  /** Danh sách tiles cần cập nhật (tối ưu incremental thay vì full re-render) */
+  private pendingTiles: Array<{ x: number; y: number }> = [];
+  private territoryHandler = (data: { grid: Uint8Array }) => {
+    this.territoryGrid = data.grid;
+  };
+  private markDirtyHandler = (data: { tileX: number; tileY: number }) => {
+    this.pendingTiles.push({ x: data.tileX, y: data.tileY });
+    this.dirty = true;
+  };
 
   constructor(scene: Phaser.Scene, tileMap: TileMap, x: number, y: number, size: number) {
     this.scene = scene;
@@ -91,9 +101,13 @@ export class Minimap {
     // Click to navigate
     this.background.setInteractive({ useHandCursor: true });
     this.background.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      const localX = pointer.x - this.background.x;
-      const localY = pointer.y - this.background.y;
-      this.navigateTo(localX, localY);
+      // pointer.x/y là tọa độ canvas — cần trừ cả container position
+      const localX = pointer.x - this.container.x - this.background.x;
+      const localY = pointer.y - this.container.y - this.background.y;
+      // Clamp vào vùng minimap hợp lệ
+      const clampedX = Phaser.Math.Clamp(localX, 0, this.mapSize);
+      const clampedY = Phaser.Math.Clamp(localY, 0, this.mapSize);
+      this.navigateTo(clampedX, clampedY);
     });
 
     // Territory overlay dots
@@ -102,12 +116,17 @@ export class Minimap {
     this.container.add(this.territoryDots);
 
     // Listen for territory updates
-    eventBus.on('territory:updated', (data: { grid: Uint8Array }) => {
-      this.territoryGrid = data.grid;
-    });
+    eventBus.on('territory:updated', this.territoryHandler);
+
+    // Listen for tile changes (terraform) — mark dirty để re-render
+    eventBus.on('tile:changed', this.markDirtyHandler);
   }
 
   private renderMinimapTexture(): void {
+    // Xóa texture cũ nếu tồn tại để tránh createCanvas trả về null
+    if (this.scene.textures.exists(this.textureKey)) {
+      this.scene.textures.remove(this.textureKey);
+    }
     const canvas = this.scene.textures.createCanvas(
       this.textureKey,
       this.worldWidth,
@@ -135,41 +154,83 @@ export class Minimap {
     this.dirty = true;
   }
 
+  /** Cập nhật minimap texture — incremental nếu có pendingTiles, fallback full re-render. */
+  private refreshMinimapTexture(): void {
+    const texture = this.scene.textures.get(this.textureKey);
+    if (!(texture instanceof Phaser.Textures.CanvasTexture)) {
+      // Fallback: tạo mới nếu texture không tồn tại
+      this.renderMinimapTexture();
+      return;
+    }
+
+    const ctx = texture.getContext();
+
+    if (this.pendingTiles.length > 0) {
+      // Incremental: chỉ cập nhật tiles đã thay đổi
+      for (const { x, y } of this.pendingTiles) {
+        const tileType = this.tileMap.getTile(x, y);
+        const color = TILE_COLORS[tileType] ?? 0x1a1a2e;
+        ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+        ctx.fillRect(x, y, 1, 1);
+      }
+      this.pendingTiles.length = 0;
+    } else {
+      // Full re-render (fallback khi không có pending tiles)
+      for (let y = 0; y < this.worldHeight; y++) {
+        for (let x = 0; x < this.worldWidth; x++) {
+          const tileType = this.tileMap.getTile(x, y);
+          const color = TILE_COLORS[tileType] ?? 0x1a1a2e;
+          ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+
+    texture.refresh();
+    this.dirty = false;
+  }
+
   private navigateTo(localX: number, localY: number): void {
-    const gameScene = this.scene.scene.get('Game');
-    const cam = gameScene.cameras.main;
+    const gameScene = this.scene.scene.get('Game') as unknown as {
+      cameraController?: CameraController;
+      cameras: { main: Phaser.Cameras.Scene2D.Camera };
+    };
+    const cam = gameScene?.cameras?.main;
     if (!cam) return;
 
+    // Convert minimap pixel → world pixel
     const worldX = (localX / this.mapSize) * this.worldWidth * TILE_SIZE;
     const worldY = (localY / this.mapSize) * this.worldHeight * TILE_SIZE;
 
-    cam.centerOn(worldX, worldY);
+    // Dùng CameraController.centerOn() để đồng bộ targetScroll + snap ngay
+    if (gameScene?.cameraController) {
+      gameScene.cameraController.centerOn(worldX, worldY);
+    } else {
+      cam.centerOn(worldX, worldY);
+    }
   }
 
   update(camera: Phaser.Cameras.Scene2D.Camera, world: GameWorld): void {
-    // Re-render terrain if dirty
+    // Re-render terrain if dirty (e.g., after terraform)
     if (this.dirty) {
-      const existing = this.scene.textures.get(this.textureKey);
-      if (existing) {
-        this.scene.textures.remove(this.textureKey);
-      }
-      this.renderMinimapTexture();
-      this.minimapImage.setTexture(this.textureKey);
+      this.refreshMinimapTexture();
     }
 
     // Update viewport rectangle
     this.viewportRect.clear();
     this.viewportRect.lineStyle(1, 0xffffff, 0.8);
 
-    const vpWorldX = camera.scrollX / TILE_SIZE;
-    const vpWorldY = camera.scrollY / TILE_SIZE;
-    const vpWorldW = camera.width / camera.zoom / TILE_SIZE;
-    const vpWorldH = camera.height / camera.zoom / TILE_SIZE;
+    // Dùng camera.worldView cho chính xác — đã bao gồm zoom + scroll
+    const wv = camera.worldView;
+    const vpTileX = wv.x / TILE_SIZE;
+    const vpTileY = wv.y / TILE_SIZE;
+    const vpTileW = wv.width / TILE_SIZE;
+    const vpTileH = wv.height / TILE_SIZE;
 
-    const vpX = vpWorldX * this.scaleRatio;
-    const vpY = vpWorldY * this.scaleRatio;
-    const vpW = vpWorldW * this.scaleRatio;
-    const vpH = vpWorldH * this.scaleRatio;
+    const vpX = vpTileX * this.scaleRatio;
+    const vpY = vpTileY * this.scaleRatio;
+    const vpW = vpTileW * this.scaleRatio;
+    const vpH = vpTileH * this.scaleRatio;
 
     this.viewportRect.strokeRect(vpX, vpY, vpW, vpH);
 
@@ -222,6 +283,8 @@ export class Minimap {
   }
 
   destroy(): void {
+    eventBus.off('territory:updated', this.territoryHandler);
+    eventBus.off('tile:changed', this.markDirtyHandler);
     if (this.scene.textures.exists(this.textureKey)) {
       this.scene.textures.remove(this.textureKey);
     }

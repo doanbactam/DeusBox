@@ -63,8 +63,9 @@ export class CameraController {
 
         if (newZoom !== oldZoom) {
           // World point under cursor before zoom
-          const worldX = cam.scrollX + pointer.x / oldZoom;
-          const worldY = cam.scrollY + pointer.y / oldZoom;
+          const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+          const worldX = worldPoint.x;
+          const worldY = worldPoint.y;
 
           cam.setZoom(newZoom);
 
@@ -131,11 +132,14 @@ export class CameraController {
       if (pointer.y > height - EDGE_SCROLL_MARGIN) this.targetScrollY += edgeSpeed;
     }
 
-    // Clamp to world bounds
-    const viewWidth = cam.width / cam.zoom;
-    const viewHeight = cam.height / cam.zoom;
-    this.targetScrollX = Phaser.Math.Clamp(this.targetScrollX, 0, this.worldWidth - viewWidth);
-    this.targetScrollY = Phaser.Math.Clamp(this.targetScrollY, 0, this.worldHeight - viewHeight);
+    // Clamp: giữ vùng visible trong world bounds (tính đúng zoom)
+    // Camera center = scrollX + cam.width/2, visible half-size = cam.width/(2*zoom)
+    const halfVisW = cam.width / (2 * cam.zoom);
+    const halfVisH = cam.height / (2 * cam.zoom);
+    const cx = this.targetScrollX + cam.width / 2;
+    const cy = this.targetScrollY + cam.height / 2;
+    this.targetScrollX = Phaser.Math.Clamp(cx, halfVisW, this.worldWidth - halfVisW) - cam.width / 2;
+    this.targetScrollY = Phaser.Math.Clamp(cy, halfVisH, this.worldHeight - halfVisH) - cam.height / 2;
 
     // Smooth interpolation
     cam.scrollX += (this.targetScrollX - cam.scrollX) * SMOOTH_FACTOR;
@@ -157,10 +161,9 @@ export class CameraController {
 
   centerOn(worldX: number, worldY: number): void {
     const cam = this.scene.cameras.main;
-    const viewWidth = cam.width / cam.zoom;
-    const viewHeight = cam.height / cam.zoom;
-    this.targetScrollX = worldX - viewWidth / 2;
-    this.targetScrollY = worldY - viewHeight / 2;
+    // Phaser camera center = scrollX + cam.width/2 (không đổi theo zoom)
+    this.targetScrollX = worldX - cam.width / 2;
+    this.targetScrollY = worldY - cam.height / 2;
     cam.scrollX = this.targetScrollX;
     cam.scrollY = this.targetScrollY;
   }
