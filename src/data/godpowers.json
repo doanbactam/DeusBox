@@ -7,6 +7,14 @@
     "range": 3,
     "color": "#27ae60"
   },
+  "terraformForest": {
+    "name": "Forest",
+    "category": "terraform",
+    "icon": "T",
+    "cooldown": 0,
+    "range": 3,
+    "color": "#1e8449"
+  },
   "terraformDesert": {
     "name": "Desert",
     "category": "terraform",
@@ -32,18 +40,42 @@
     "color": "#7f8c8d"
   },
   "spawnHuman": {
-    "name": "Spawn Human",
+    "name": "Human",
     "category": "spawn",
     "icon": "H",
-    "cooldown": 1000,
+    "cooldown": 500,
     "range": 1,
     "color": "#e74c3c"
   },
+  "spawnElf": {
+    "name": "Elf",
+    "category": "spawn",
+    "icon": "E",
+    "cooldown": 500,
+    "range": 1,
+    "color": "#2ecc71"
+  },
+  "spawnDwarf": {
+    "name": "Dwarf",
+    "category": "spawn",
+    "icon": "D",
+    "cooldown": 500,
+    "range": 1,
+    "color": "#e67e22"
+  },
+  "spawnOrc": {
+    "name": "Orc",
+    "category": "spawn",
+    "icon": "O",
+    "cooldown": 500,
+    "range": 1,
+    "color": "#8e44ad"
+  },
   "spawnAnimal": {
-    "name": "Spawn Animal",
+    "name": "Animal",
     "category": "spawn",
     "icon": "A",
-    "cooldown": 500,
+    "cooldown": 300,
     "range": 1,
     "color": "#a0522d"
   },
@@ -68,17 +100,36 @@
   "earthquake": {
     "name": "Earthquake",
     "category": "destroy",
-    "icon": "E",
+    "icon": "Q",
     "cooldown": 10000,
     "range": 8,
     "duration": 3000,
     "damage": 30,
     "color": "#7f8c8d"
   },
+  "meteor": {
+    "name": "Meteor",
+    "category": "destroy",
+    "icon": "★",
+    "cooldown": 8000,
+    "range": 5,
+    "damage": 80,
+    "color": "#ff6600"
+  },
+  "tornado": {
+    "name": "Tornado",
+    "category": "destroy",
+    "icon": "◎",
+    "cooldown": 6000,
+    "range": 3,
+    "duration": 6000,
+    "damage": 20,
+    "color": "#95a5a6"
+  },
   "flood": {
     "name": "Flood",
     "category": "destroy",
-    "icon": "F",
+    "icon": "~",
     "cooldown": 8000,
     "range": 6,
     "duration": 8000,
@@ -88,9 +139,18 @@
     "name": "Heal",
     "category": "create",
     "icon": "+",
-    "cooldown": 2000,
-    "range": 3,
+    "cooldown": 1000,
+    "range": 4,
     "healAmount": 50,
     "color": "#2ecc71"
+  },
+  "bless": {
+    "name": "Bless",
+    "category": "create",
+    "icon": "✦",
+    "cooldown": 5000,
+    "range": 5,
+    "healAmount": 100,
+    "color": "#f1c40f"
   }
 }

@@ -80,16 +80,23 @@ export enum ResourceType {
 
 export enum GodPowerType {
   TerraformGrass = 'TerraformGrass',
+  TerraformForest = 'TerraformForest',
   TerraformDesert = 'TerraformDesert',
   TerraformWater = 'TerraformWater',
   TerraformMountain = 'TerraformMountain',
   SpawnHuman = 'SpawnHuman',
+  SpawnElf = 'SpawnElf',
+  SpawnDwarf = 'SpawnDwarf',
+  SpawnOrc = 'SpawnOrc',
   SpawnAnimal = 'SpawnAnimal',
   FireStrike = 'FireStrike',
   LightningStrike = 'LightningStrike',
   Earthquake = 'Earthquake',
+  Meteor = 'Meteor',
+  Tornado = 'Tornado',
   Flood = 'Flood',
   Heal = 'Heal',
+  Bless = 'Bless',
 }
 
 export enum NeedType {

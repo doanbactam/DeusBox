@@ -309,6 +309,77 @@ export class DisasterTool {
     }
   }
 
+  // ── Meteor ──────────────────────────────────────────────────────────
+
+  startMeteor(centerX: number, centerY: number, radius: number, damage: number): void {
+    const pixelX = centerX * TILE_SIZE + TILE_SIZE / 2;
+    const pixelY = centerY * TILE_SIZE + TILE_SIZE / 2;
+
+    new LightningEffect(this.scene, pixelX, pixelY);
+    new EarthquakeEffect(this.scene, 1500, 0.015);
+
+    this.damageEntitiesInArea(pixelX, pixelY, radius * TILE_SIZE, damage);
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > radius * radius) continue;
+        const tx = centerX + dx;
+        const ty = centerY + dy;
+        if (!this.tileMap.isInBounds(tx, ty)) continue;
+        const prev = this.tileMap.getTile(tx, ty);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const newTile = dist < radius * 0.4 ? TileType.Lava : TileType.Sand;
+        if (prev !== newTile) {
+          this.tileMap.setTile(tx, ty, newTile);
+          eventBus.emit('tile:changed', { tileX: tx, tileY: ty, fromType: prev, toType: newTile });
+        }
+      }
+    }
+
+    eventBus.emit('disaster:start', { type: 'meteor', centerX, centerY, radius });
+  }
+
+  // ── Tornado ─────────────────────────────────────────────────────────
+
+  startTornado(centerX: number, centerY: number, radius: number, duration: number, damage: number): void {
+    const disaster: ActiveDisaster = {
+      type: 'tornado',
+      centerX,
+      centerY,
+      radius,
+      duration,
+      elapsed: 0,
+      spreadTimer: 0,
+      affectedTiles: new Set(),
+      effects: [],
+    };
+
+    this.activeDisasters.push(disaster);
+    eventBus.emit('disaster:start', { type: 'tornado', centerX, centerY, radius });
+  }
+
+  private updateTornado(d: ActiveDisaster, delta: number): void {
+    const progress = d.elapsed / d.duration;
+    const angle = progress * Math.PI * 8;
+    const spiralRadius = d.radius * progress;
+    const cx = d.centerX + Math.cos(angle) * spiralRadius;
+    const cy = d.centerY + Math.sin(angle) * spiralRadius;
+    const pixelX = cx * TILE_SIZE + TILE_SIZE / 2;
+    const pixelY = cy * TILE_SIZE + TILE_SIZE / 2;
+
+    this.damageEntitiesInArea(pixelX, pixelY, TILE_SIZE * 2, 5);
+
+    const tx = Math.floor(cx);
+    const ty = Math.floor(cy);
+    if (this.tileMap.isInBounds(tx, ty)) {
+      const prev = this.tileMap.getTile(tx, ty);
+      if (FLAMMABLE_TILES.has(prev)) {
+        this.tileMap.setTile(tx, ty, TileType.Sand);
+        eventBus.emit('tile:changed', { tileX: tx, tileY: ty, fromType: prev, toType: TileType.Sand });
+      }
+    }
+  }
+
   // ── Update loop ─────────────────────────────────────────────────────
 
   update(delta: number): void {
@@ -322,6 +393,8 @@ export class DisasterTool {
           d.spreadTimer -= FIRE_SPREAD_INTERVAL;
           this.spreadFire(d);
         }
+      } else if (d.type === 'tornado') {
+        this.updateTornado(d, delta);
       } else if (d.type === 'flood') {
         const progress = d.elapsed / d.duration;
         const currentRadius = Math.floor(d.radius * progress);

@@ -105,8 +105,6 @@ class ErrorHandler {
     const criticalPatterns = [
       'out of memory',
       'maximum call stack',
-      'webgl context lost',
-      'cannot read properties of null',
     ];
     const msg = error.message.toLowerCase();
     return criticalPatterns.some(p => msg.includes(p));

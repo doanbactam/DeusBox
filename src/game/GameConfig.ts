@@ -13,7 +13,7 @@ const gfx = settings.getGraphics();
 const fpsConfig = gfx.maxFPS > 0 ? { target: gfx.maxFPS, forceSetTimeOut: false } : {};
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.WEBGL,
+  type: Phaser.AUTO,
   width: 1280,
   height: 720,
   parent: 'game-container',
