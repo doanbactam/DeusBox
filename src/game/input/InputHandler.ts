@@ -24,6 +24,7 @@ const POWER_SHORTCUTS: Record<string, string> = {
 /** Set of GodPowerType values that are terraform powers. */
 const TERRAFORM_POWERS = new Set<string>([
   GodPowerType.TerraformGrass,
+  GodPowerType.TerraformForest,
   GodPowerType.TerraformDesert,
   GodPowerType.TerraformWater,
   GodPowerType.TerraformMountain,

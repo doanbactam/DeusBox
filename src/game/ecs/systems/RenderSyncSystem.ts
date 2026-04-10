@@ -7,8 +7,9 @@ import Health from '../components/Health.js';
 import Combat from '../components/Combat.js';
 import MilitaryRole from '../components/MilitaryRole.js';
 import Equipment from '../components/Equipment.js';
+import Faction from '../components/Faction.js';
 import AnimationState from '../components/AnimationState.js';
-import { Creature } from '../components/TagComponents.js';
+import { Creature, Dead } from '../components/TagComponents.js';
 import { ANIM_IDLE, ANIM_WALK, ANIM_ATTACK, ANIM_DIE } from '../components/AnimationState.js';
 import { ROLE_WARRIOR, ROLE_ARCHER, ROLE_MAGE } from './MilitarySystem.js';
 import { entityTypes } from '../factories/CreatureFactory.js';
@@ -21,19 +22,33 @@ const ANIM_KEYS = ['idle', 'walk', 'attack', 'die'] as const;
 /** Velocity threshold for walk detection */
 const WALK_THRESHOLD = 5;
 
+/** Faction → color mapping for indicators */
+const FACTION_COLORS: Record<number, number> = {
+  0: 0xaaaaaa,
+  1: 0x3498db,
+  2: 0x2ecc71,
+  3: 0xe67e22,
+  4: 0x9b59b6,
+  5: 0xe74c3c,
+};
+
+const HEALTH_BAR_WIDTH = 24;
+const HEALTH_BAR_HEIGHT = 3;
+const HEALTH_BAR_OFFSET_Y = -16;
+
 /**
  * Creates a render sync system that keeps Phaser sprites in sync with
  * ECS Position data. Uses Phaser animation playback for creature sprites.
+ * Draws health bars and faction indicators.
  */
 export function createRenderSyncSystem(
   scene: Phaser.Scene,
   sprites: Map<number, Phaser.GameObjects.Sprite>,
 ): (world: GameWorld, delta: number) => void {
   const trackedEntities = new Set<number>();
-  /** Equipment overlay sprites keyed by entity ID */
   const equipOverlays = new Map<number, Phaser.GameObjects.Sprite[]>();
-  /** Track last played animation key per entity to avoid redundant play() calls */
   const lastAnimKey = new Map<number, string>();
+  const healthBars = new Map<number, Phaser.GameObjects.Graphics>();
 
   return (world: GameWorld): void => {
     const ents = query(world, [Position, SpriteRef]);
@@ -114,6 +129,39 @@ export function createRenderSyncSystem(
         }
       }
 
+      // ── Health bar + faction indicator for creatures ───────────────
+      if (hasComponent(world, eid, Creature) && hasComponent(world, eid, Health)) {
+        const hp = Health.current[eid];
+        const maxHp = Health.max[eid];
+        const isDead = hasComponent(world, eid, Dead) || hp <= 0;
+
+        let gfx = healthBars.get(eid);
+        if (!gfx) {
+          gfx = scene.add.graphics();
+          gfx.setDepth(eid + 0.8);
+          healthBars.set(eid, gfx);
+        }
+
+        gfx.clear();
+        if (!isDead) {
+          const barX = Position.x[eid] - HEALTH_BAR_WIDTH / 2;
+          const barY = Position.y[eid] + HEALTH_BAR_OFFSET_Y;
+          const ratio = Math.max(0, hp / maxHp);
+
+          gfx.fillStyle(0x111111, 0.8);
+          gfx.fillRect(barX - 1, barY - 1, HEALTH_BAR_WIDTH + 2, HEALTH_BAR_HEIGHT + 2);
+
+          const barColor = ratio > 0.6 ? 0x2ecc71 : ratio > 0.3 ? 0xf39c12 : 0xe74c3c;
+          gfx.fillStyle(barColor, 1);
+          gfx.fillRect(barX, barY, HEALTH_BAR_WIDTH * ratio, HEALTH_BAR_HEIGHT);
+
+          const factionId = hasComponent(world, eid, Faction) ? Math.floor(Faction.id[eid]) : 0;
+          const fColor = FACTION_COLORS[factionId] ?? 0xaaaaaa;
+          gfx.fillStyle(fColor, 1);
+          gfx.fillCircle(Position.x[eid], barY - 3, 2);
+        }
+      }
+
       // Equipment overlay rendering
       if (hasComponent(world, eid, Equipment)) {
         const weapon = Equipment.weapon[eid];
@@ -169,6 +217,11 @@ export function createRenderSyncSystem(
         if (overlays) {
           for (const overlay of overlays) overlay.destroy();
           equipOverlays.delete(trackedEid);
+        }
+        const hpBar = healthBars.get(trackedEid);
+        if (hpBar) {
+          hpBar.destroy();
+          healthBars.delete(trackedEid);
         }
         lastAnimKey.delete(trackedEid);
       }
