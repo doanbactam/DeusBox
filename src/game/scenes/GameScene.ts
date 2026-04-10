@@ -135,7 +135,7 @@ export class GameScene extends Phaser.Scene {
 
     // 6. Center camera on world
     this.cameraController.centerOn(worldWidth / 2, worldHeight / 2);
-    this.cameraController.setZoom(2);
+    this.cameraController.setZoom(3);
 
     // Initial chunk load
     this.chunkRenderer.update(this.cameras.main);
@@ -189,48 +189,42 @@ export class GameScene extends Phaser.Scene {
     // Wave 16 system: Research (tech tree)
     this.ecsHost.registerSystem(createTechSystem());
 
-    // Spawn test creatures around the center of the world
+    // Spawn multi-faction world: 4 civilized factions + wildlife
     const cx = worldWidth / 2;
     const cy = worldHeight / 2;
+    const spawnRadius = 600;
 
-    // 5 humans
-    for (let i = 0; i < 5; i++) {
-      spawnCreature(
-        this.ecsHost.world,
-        'human',
-        cx + (Math.random() - 0.5) * 400,
-        cy + (Math.random() - 0.5) * 400,
-        1,
-      );
+    const factions: Array<{ type: string; id: number; count: number; angle: number }> = [
+      { type: 'human', id: 1, count: 8, angle: 0 },
+      { type: 'elf', id: 2, count: 8, angle: Math.PI / 2 },
+      { type: 'dwarf', id: 3, count: 6, angle: Math.PI },
+      { type: 'orc', id: 4, count: 6, angle: (3 * Math.PI) / 2 },
+    ];
+
+    for (const faction of factions) {
+      const baseFx = cx + Math.cos(faction.angle) * spawnRadius;
+      const baseFy = cy + Math.sin(faction.angle) * spawnRadius;
+      for (let i = 0; i < faction.count; i++) {
+        const fx = baseFx + (Math.random() - 0.5) * 200;
+        const fy = baseFy + (Math.random() - 0.5) * 200;
+        spawnCreature(this.ecsHost.world, faction.type, fx, fy, faction.id);
+      }
     }
 
-    // 3 elves
-    for (let i = 0; i < 3; i++) {
-      spawnCreature(
-        this.ecsHost.world,
-        'elf',
-        cx + (Math.random() - 0.5) * 400,
-        cy + (Math.random() - 0.5) * 400,
-        2,
-      );
-    }
-
-    // 2 wolves
-    for (let i = 0; i < 2; i++) {
-      spawnCreature(
-        this.ecsHost.world,
-        'wolf',
-        cx + (Math.random() - 0.5) * 500,
-        cy + (Math.random() - 0.5) * 500,
-        0,
-      );
+    // Wildlife spread across map
+    const animalTypes = ['wolf', 'deer', 'chicken', 'bear'] as const;
+    for (let i = 0; i < 20; i++) {
+      const ax = cx + (Math.random() - 0.5) * 2000;
+      const ay = cy + (Math.random() - 0.5) * 2000;
+      const animalType = animalTypes[Math.floor(Math.random() * animalTypes.length)];
+      spawnCreature(this.ecsHost.world, animalType, ax, ay, 0);
     }
 
     const entityCount = getAllEntities(this.ecsHost.world).length;
     console.log(`[GameScene] ECS initialized with ${entityCount} entities`);
 
     // ── Spawn terrain resource entities ──────────────────────────────────
-    spawnTerrainResources(this.ecsHost.world, tileMap, cx, cy, 60);
+    spawnTerrainResources(this.ecsHost.world, tileMap, worldWidth, worldHeight, 300);
     console.log('[GameScene] Terrain resources spawned');
 
     // ── God Powers Initialization ────────────────────────────────────────
@@ -643,13 +637,14 @@ export class GameScene extends Phaser.Scene {
 function spawnTerrainResources(
   world: ReturnType<typeof ECSHost.getInstance>['world'],
   tileMap: TileMap,
-  centerX: number,
-  centerY: number,
+  worldWidth: number,
+  worldHeight: number,
   count: number,
 ): void {
+  const margin = TILE_SIZE * 15;
   for (let i = 0; i < count; i++) {
-    const x = centerX + (Math.random() - 0.5) * 1000;
-    const y = centerY + (Math.random() - 0.5) * 1000;
+    const x = margin + Math.random() * (worldWidth - margin * 2);
+    const y = margin + Math.random() * (worldHeight - margin * 2);
     const tileX = Math.floor(x / TILE_SIZE);
     const tileY = Math.floor(y / TILE_SIZE);
     const tile = tileMap.getTile(tileX, tileY);

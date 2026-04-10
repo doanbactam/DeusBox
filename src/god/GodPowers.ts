@@ -35,6 +35,7 @@ function enumToJsonKey(enumValue: string): string {
 
 const TERRAFORM_TILE_MAP: Partial<Record<string, TileType>> = {
   [GodPowerType.TerraformGrass]: TileType.Grass,
+  [GodPowerType.TerraformForest]: TileType.Forest,
   [GodPowerType.TerraformDesert]: TileType.Desert,
   [GodPowerType.TerraformWater]: TileType.ShallowWater,
   [GodPowerType.TerraformMountain]: TileType.Mountain,
@@ -130,7 +131,13 @@ export class GodPowers {
       // ── Spawn ────────────────────────────────────────────────────────
       case 'spawn': {
         if (name === GodPowerType.SpawnHuman) {
-          this.spawnTool.spawnCreature('human', pixelX, pixelY, 0);
+          this.spawnTool.spawnCreature('human', pixelX, pixelY, 1);
+        } else if (name === GodPowerType.SpawnElf) {
+          this.spawnTool.spawnCreature('elf', pixelX, pixelY, 2);
+        } else if (name === GodPowerType.SpawnDwarf) {
+          this.spawnTool.spawnCreature('dwarf', pixelX, pixelY, 3);
+        } else if (name === GodPowerType.SpawnOrc) {
+          this.spawnTool.spawnCreature('orc', pixelX, pixelY, 4);
         } else if (name === GodPowerType.SpawnAnimal) {
           const animal = ANIMAL_TYPES[Math.floor(Math.random() * ANIMAL_TYPES.length)];
           this.spawnTool.spawnCreature(animal, pixelX, pixelY, 0);
@@ -152,15 +159,23 @@ export class GodPowers {
             power.duration ?? 3000,
             power.damage ?? 30,
           );
+        } else if (name === GodPowerType.Meteor) {
+          this.disasterTool.startMeteor(tileX, tileY, range, power.damage ?? 80);
+        } else if (name === GodPowerType.Tornado) {
+          this.disasterTool.startTornado(tileX, tileY, range, power.duration ?? 6000, power.damage ?? 20);
         } else if (name === GodPowerType.Flood) {
           this.disasterTool.startFlood(tileX, tileY, range, power.duration ?? 8000);
         }
         break;
       }
 
-      // ── Create (heal) ────────────────────────────────────────────────
+      // ── Create (heal / bless) ────────────────────────────────────────
       case 'create': {
-        this.healEntities(pixelX, pixelY, range, power.healAmount ?? 50);
+        if (name === GodPowerType.Bless) {
+          this.blessEntities(pixelX, pixelY, range, power.healAmount ?? 100);
+        } else {
+          this.healEntities(pixelX, pixelY, range, power.healAmount ?? 50);
+        }
         break;
       }
     }
@@ -217,6 +232,54 @@ export class GodPowers {
 
     // Green sparkle VFX at heal position
     this.createHealEffect(pixelX, pixelY);
+  }
+
+  private blessEntities(pixelX: number, pixelY: number, range: number, healAmount: number): void {
+    const rangePixels = range * TILE_SIZE;
+    const ents = query(this.world, [Position, Health]);
+
+    for (const eid of ents) {
+      const dx = Position.x[eid] - pixelX;
+      const dy = Position.y[eid] - pixelY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist <= rangePixels) {
+        Health.current[eid] = Health.max[eid];
+        Health.max[eid] = Math.min(Health.max[eid] * 1.2, 500);
+        Health.current[eid] = Health.max[eid];
+      }
+    }
+
+    this.createBlessEffect(pixelX, pixelY, rangePixels);
+  }
+
+  private createBlessEffect(x: number, y: number, radius: number): void {
+    const BLESS_KEY = '__god_pixel_bless';
+    if (!this.scene.textures.exists(BLESS_KEY)) {
+      const canvas = this.scene.textures.createCanvas(BLESS_KEY, 4, 4);
+      if (canvas) {
+        const ctx = canvas.getContext();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 4, 4);
+        canvas.refresh();
+      }
+    }
+
+    const emitter = this.scene.add.particles(x, y, BLESS_KEY, {
+      speed: { min: 40, max: 100 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 0.8, end: 0 },
+      lifespan: { min: 400, max: 800 },
+      tint: [0xf1c40f, 0xffffff, 0xf39c12],
+      blendMode: Phaser.BlendModes.ADD,
+      emitting: false,
+    });
+    emitter.setDepth(500);
+    emitter.explode(40);
+
+    this.scene.time.delayedCall(1000, () => {
+      emitter.destroy();
+    });
   }
 
   private createHealEffect(x: number, y: number): void {
