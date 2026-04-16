@@ -5,9 +5,8 @@ import Structure from '../components/Structure.js';
 import { Dead } from '../components/TagComponents.js';
 import { eventBus } from '@/core/EventBus.js';
 import { TechType } from '@/core/Types.js';
+import { MAX_FACTIONS } from '@/core/Constants.js';
 import techsData from '@/data/techs.json';
-
-const MAX_FACTIONS = 10;
 
 interface TechConfig {
   tier: number;

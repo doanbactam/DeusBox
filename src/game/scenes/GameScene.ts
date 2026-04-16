@@ -425,8 +425,9 @@ export class GameScene extends Phaser.Scene {
 
     const pointer = this.input.activePointer;
     const cam = this.cameras.main;
-    const worldX = cam.scrollX + pointer.x / cam.zoom;
-    const worldY = cam.scrollY + pointer.y / cam.zoom;
+    const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+    const worldX = worldPoint.x;
+    const worldY = worldPoint.y;
 
     const HOVER_RADIUS = 24;
     let closestEid = -1;

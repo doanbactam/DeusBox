@@ -69,9 +69,12 @@ export class CameraController {
 
           cam.setZoom(newZoom);
 
+          const cx = cam.width / 2;
+          const cy = cam.height / 2;
+
           // Immediately snap scroll so pointer world position stays correct
-          this.targetScrollX = worldX - pointer.x / newZoom;
-          this.targetScrollY = worldY - pointer.y / newZoom;
+          this.targetScrollX = worldX - cx - (pointer.x - cx) / newZoom;
+          this.targetScrollY = worldY - cy - (pointer.y - cy) / newZoom;
           cam.scrollX = this.targetScrollX;
           cam.scrollY = this.targetScrollY;
         }
@@ -102,6 +105,13 @@ export class CameraController {
     scene.input.on('pointerup', () => {
       this.isDragging = false;
     });
+    scene.input.on('pointerupoutside', () => {
+      this.isDragging = false;
+    });
+    // Fallback stop dragging if mouse leaves canvas
+    scene.input.on('gameout', () => {
+      this.isDragging = false;
+    });
   }
 
   update(_time: number, delta: number): void {
@@ -126,10 +136,16 @@ export class CameraController {
       const { width, height } = this.scene.scale;
       const edgeSpeed = EDGE_SCROLL_SPEED * dt;
 
-      if (pointer.x < EDGE_SCROLL_MARGIN) this.targetScrollX -= edgeSpeed;
-      if (pointer.x > width - EDGE_SCROLL_MARGIN) this.targetScrollX += edgeSpeed;
-      if (pointer.y < EDGE_SCROLL_MARGIN) this.targetScrollY -= edgeSpeed;
-      if (pointer.y > height - EDGE_SCROLL_MARGIN) this.targetScrollY += edgeSpeed;
+      // Only edge scroll if mouse is actually over the game window and initialized
+      const isOver = document.getElementById('game-container')?.matches(':hover');
+      const isUninitialized = pointer.x === 0 && pointer.y === 0;
+
+      if (isOver && !isUninitialized) {
+        if (pointer.x < EDGE_SCROLL_MARGIN) this.targetScrollX -= edgeSpeed;
+        if (pointer.x > width - EDGE_SCROLL_MARGIN) this.targetScrollX += edgeSpeed;
+        if (pointer.y < EDGE_SCROLL_MARGIN) this.targetScrollY -= edgeSpeed;
+        if (pointer.y > height - EDGE_SCROLL_MARGIN) this.targetScrollY += edgeSpeed;
+      }
     }
 
     // Clamp: giữ vùng visible trong world bounds (tính đúng zoom)

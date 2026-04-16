@@ -7,8 +7,7 @@ import Combat from '../components/Combat.js';
 import { Dead } from '../components/TagComponents.js';
 import { eventBus } from '@/core/EventBus.js';
 import { DiplomacyState, BuildingType } from '@/core/Types.js';
-
-const MAX_FACTIONS = 10;
+import { MAX_FACTIONS } from '@/core/Constants.js';
 
 /** Diplomacy matrix: diplomacy[a][b] = DiplomacyState. */
 const diplomacy: DiplomacyState[][] = [];

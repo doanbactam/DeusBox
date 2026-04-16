@@ -251,9 +251,10 @@ export class DragSelect {
     screenY: number,
     cam: Phaser.Cameras.Scene2D.Camera,
   ): { x: number; y: number } {
+    const worldPoint = cam.getWorldPoint(screenX, screenY);
     return {
-      x: cam.scrollX + screenX / cam.zoom,
-      y: cam.scrollY + screenY / cam.zoom,
+      x: worldPoint.x,
+      y: worldPoint.y,
     };
   }
 }

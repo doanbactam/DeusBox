@@ -3,6 +3,7 @@ export const CHUNK_SIZE = 32;
 export const WORLD_TILES_X = 256;
 export const WORLD_TILES_Y = 256;
 export const MAX_ENTITIES = 10000;
+export const MAX_FACTIONS = 10;
 export const MAX_ZOOM = 4;
 export const MIN_ZOOM = 0.5;
 export const CAMERA_PAN_SPEED = 400;

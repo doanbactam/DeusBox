@@ -112,8 +112,9 @@ export class ContextMenu {
     this.currentEntityId = entityId;
 
     const cam = this.scene.scene.get('Game').cameras.main;
-    this.currentWorldX = cam.scrollX + screenX / cam.zoom;
-    this.currentWorldY = cam.scrollY + screenY / cam.zoom;
+    const worldPoint = cam.getWorldPoint(screenX, screenY);
+    this.currentWorldX = worldPoint.x;
+    this.currentWorldY = worldPoint.y;
 
     let items: MenuItem[] = EMPTY_TILE_ITEMS;
 
@@ -138,8 +139,9 @@ export class ContextMenu {
   showForEmptyTile(screenX: number, screenY: number): void {
     this.currentEntityId = -1;
     const cam = this.scene.scene.get('Game').cameras.main;
-    this.currentWorldX = cam.scrollX + screenX / cam.zoom;
-    this.currentWorldY = cam.scrollY + screenY / cam.zoom;
+    const worldPoint = cam.getWorldPoint(screenX, screenY);
+    this.currentWorldX = worldPoint.x;
+    this.currentWorldY = worldPoint.y;
     this.show(screenX, screenY, EMPTY_TILE_ITEMS);
   }
 

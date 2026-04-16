@@ -4,7 +4,7 @@ import Position from '../components/Position.js';
 import Faction from '../components/Faction.js';
 import Structure from '../components/Structure.js';
 import { Dead } from '../components/TagComponents.js';
-import { TILE_SIZE, WORLD_TILES_X, WORLD_TILES_Y } from '@/core/Constants.js';
+import { TILE_SIZE, WORLD_TILES_X, WORLD_TILES_Y, MAX_FACTIONS } from '@/core/Constants.js';
 import { eventBus } from '@/core/EventBus.js';
 
 /** Each zone is 16x16 tiles = 512x512 pixels. */
@@ -14,7 +14,6 @@ const ZONE_PX = ZONE_TILES * TILE_SIZE;
 const ZONES_X = WORLD_TILES_X / ZONE_TILES; // 16
 const ZONES_Y = WORLD_TILES_Y / ZONE_TILES; // 16
 const TOTAL_ZONES = ZONES_X * ZONES_Y; // 256
-const MAX_FACTIONS = 10;
 
 /** 0 = unclaimed, 1+ = faction ID. */
 const territoryGrid = new Uint8Array(TOTAL_ZONES);

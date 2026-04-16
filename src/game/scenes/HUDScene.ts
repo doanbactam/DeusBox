@@ -262,8 +262,9 @@ export class HUDScene extends Phaser.Scene {
 
       const world = this.getECSWorld();
       const cam = gameScene.cameras.main;
-      const worldX = cam.scrollX + pointer.x / cam.zoom;
-      const worldY = cam.scrollY + pointer.y / cam.zoom;
+      const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+      const worldX = worldPoint.x;
+      const worldY = worldPoint.y;
 
       // Find entity under cursor
       const sprites = this.getSpritesMap();
@@ -584,8 +585,9 @@ export class HUDScene extends Phaser.Scene {
 
       // Convert screen coords to world coords
       const cam = gameScene.cameras.main;
-      const worldX = cam.scrollX + pointer.x / cam.zoom;
-      const worldY = cam.scrollY + pointer.y / cam.zoom;
+      const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+      const worldX = worldPoint.x;
+      const worldY = worldPoint.y;
 
       // Find closest entity within selection radius
       const world = this.getECSWorld();

@@ -7,6 +7,9 @@ import Combat from '../components/Combat.js';
 import Structure from '../components/Structure.js';
 import MilitaryRole from '../components/MilitaryRole.js';
 import { Dead, Building, Creature } from '../components/TagComponents.js';
+import Pathfinder from '../components/Pathfinder.js';
+import AIStateComponent from '../components/AIState.js';
+import { AIState } from '@/core/Types.js';
 import { spawnCreature } from '../factories/CreatureFactory.js';
 import { spatialHash } from './SpatialIndexSystem.js';
 import { getTerritoryOwner } from './TerritorySystem.js';
@@ -104,7 +107,6 @@ function triggerWarDeclaration(
     );
     if (eid >= 0) {
       // Set pathfinder target toward defender buildings
-      const { default: Pathfinder } = require('../components/Pathfinder.js');
       if (hasComponent(world, eid, Pathfinder)) {
         Pathfinder.targetX[eid] = targetX + randFloat(-100, 100);
         Pathfinder.targetY[eid] = targetY + randFloat(-100, 100);
@@ -161,15 +163,12 @@ function triggerSiegeEvent(world: GameWorld, attackerFaction: number, defenderFa
 
     // Only redirect units within a reasonable range
     if (dist < TILE_SIZE * 30) {
-      const { default: Pathfinder } = require('../components/Pathfinder.js');
       if (hasComponent(world, eid, Pathfinder)) {
         Pathfinder.targetX[eid] = tx + randFloat(-50, 50);
         Pathfinder.targetY[eid] = ty + randFloat(-50, 50);
       }
       // Set combat state
-      const { default: AIStateComponent } = require('../components/AIState.js');
       if (hasComponent(world, eid, AIStateComponent)) {
-        const { AIState } = require('@/core/Types.js');
         AIStateComponent.state[eid] = AIState.Fighting as unknown as number;
       }
     }
@@ -219,7 +218,6 @@ function triggerWarRaid(world: GameWorld, attackerFaction: number, defenderFacti
     const type = types[randInt(0, types.length - 1)] as string;
     const eid = spawnCreature(world, type, sx, sy, attackerFaction);
     if (eid >= 0) {
-      const { default: Pathfinder } = require('../components/Pathfinder.js');
       if (hasComponent(world, eid, Pathfinder)) {
         Pathfinder.targetX[eid] = targetX + randFloat(-150, 150);
         Pathfinder.targetY[eid] = targetY + randFloat(-150, 150);

@@ -165,9 +165,10 @@ export class InputHandler {
    */
   screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
     const cam = this.scene.cameras.main;
+    const worldPoint = cam.getWorldPoint(screenX, screenY);
     return {
-      x: cam.scrollX + screenX / cam.zoom,
-      y: cam.scrollY + screenY / cam.zoom,
+      x: worldPoint.x,
+      y: worldPoint.y,
     };
   }
 
